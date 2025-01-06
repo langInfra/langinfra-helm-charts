@@ -1,0 +1,167 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "langinfra.fullname" . }}
+  labels:
+    app: {{ template "langinfra.name" . }}
+    chart: {{ template "langinfra.chart" . }}
+    release: {{ .Release.Name }}
+    langinfra-scope: "backend"
+spec:
+  serviceName: "{{ include "langinfra.fullname" . }}-service"
+  replicas: {{ .Values.langinfra.backend.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "langinfra.name" . }}
+      chart: {{ template "langinfra.chart" . }}
+      release: {{ .Release.Name }}
+      langinfra-scope: "backend"
+  template:
+    metadata:
+      {{- with .Values.langinfra.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app: {{ template "langinfra.name" . }}
+        chart: {{ template "langinfra.chart" . }}
+        release: {{ .Release.Name }}
+        langinfra-scope: "backend"
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "langinfra.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.langinfra.backend.podSecurityContext | nindent 8 }}
+      {{- if .Values.secretProvider.enabled }}
+      volumes:
+        - name: secrets-store-inline
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: "{{- .Values.secretProvider.name }}"
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.langinfra.backend.securityContext | nindent 12 }}
+          image: "{{ .Values.langinfra.backend.image.repository }}:{{ .Values.langinfra.backend.image.tag  | default .Values.langinfra.global.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.langinfra.backend.image.pullPolicy | default .Values.langinfra.global.image.pullPolicy }}
+          command: ["/bin/bash", "-c"]
+          args:
+            - >
+              set -e &&
+              if [ -n "$LF_CHART_EXTERNALDB_DRIVER" ]; then
+                echo "LF_CHART_EXTERNALDB_DRIVER is set, using external database at $LF_CHART_EXTERNALDB_HOST" &&
+                export LANGINFRA_DATABASE_URL="$LF_CHART_EXTERNALDB_DRIVER://$LF_CHART_EXTERNALDB_USER:$LF_CHART_EXTERNALDB_PASSWORD@$LF_CHART_EXTERNALDB_HOST:$LF_CHART_EXTERNALDB_PORT/$LF_CHART_EXTERNALDB_DATABASE"
+              else
+                echo "LF_CHART_EXTERNALDB_DRIVER is not set, using SQLLite database"
+              fi &&
+              langinfra run --host 0.0.0.0 --port {{ .Values.langinfra.backend.service.port }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.langinfra.backend.service.port }}
+              protocol: TCP
+          {{- if or .Values.secretProvider.enabled .Values.langinfra.backend.sqlite.enabled }}
+          volumeMounts:
+          {{- end }}
+            {{- if .Values.secretProvider.enabled }}
+            - name: secrets-store-inline
+              mountPath: "/mnt/secrets"
+              readOnly: true
+            {{- end }}
+            {{- if .Values.langinfra.backend.sqlite.enabled }}
+            - name: data
+              mountPath: /data
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+              
+            initialDelaySeconds: {{ .Values.langinfra.backend.probe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.langinfra.backend.probe.periodSeconds }}
+            timeoutSeconds: {{ .Values.langinfra.backend.probe.timeoutSeconds }}
+            failureThreshold: {{ .Values.langinfra.backend.probe.failureThreshold }}   
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.langinfra.backend.probe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.langinfra.backend.probe.periodSeconds }}
+            timeoutSeconds: {{ .Values.langinfra.backend.probe.timeoutSeconds }}
+            failureThreshold: {{ .Values.langinfra.backend.probe.failureThreshold }}   
+          env:
+            - name: LANGINFRA_BACKEND_ONLY
+              value: "{{ .Values.langinfra.backend.backendOnly }}"
+            - name: LANGINFRA_NUM_WORKERS
+              value: "{{ .Values.langinfra.backend.numWorkers }}"
+            {{- if .Values.langinfra.backend.sqlite.enabled }}
+            - name: LANGINFRA_DATABASE_URL
+              value: "sqlite:////data/langinfra.db"
+            {{- end }}
+            {{- with .Values.langinfra.backend.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.langinfra.backend.externalDatabase.enabled }}
+            - name: LF_CHART_EXTERNALDB_DRIVER
+            {{- toYaml .Values.langinfra.backend.externalDatabase.driver | nindent 14 }}
+            - name: LF_CHART_EXTERNALDB_HOST
+            {{- toYaml .Values.langinfra.backend.externalDatabase.host | nindent 14 }}
+            - name: LF_CHART_EXTERNALDB_PORT
+            {{- toYaml .Values.langinfra.backend.externalDatabase.port | nindent 14 }}
+            - name: LF_CHART_EXTERNALDB_DATABASE
+            {{- toYaml .Values.langinfra.backend.externalDatabase.database | nindent 14 }}
+            - name: LF_CHART_EXTERNALDB_USER
+            {{- toYaml .Values.langinfra.backend.externalDatabase.user | nindent 14 }}
+            - name: LF_CHART_EXTERNALDB_PASSWORD
+            {{- toYaml .Values.langinfra.backend.externalDatabase.password | nindent 14 }}
+            {{- end }}
+            {{- if and (hasKey .Values.langinfra.backend "autoLogin") (eq .Values.langinfra.backend.autoLogin false) }}
+            - name: LANGINFRA_AUTO_LOGIN
+              value: "{{ .Values.langinfra.backend.autoLogin | default "False" }}"
+            - name: LANGINFRA_SUPERUSER
+              value: "{{ .Values.langinfra.backend.superuser | default "admin" }}"
+            - name: LANGINFRA_SUPERUSER_PASSWORD
+              value: "{{ .Values.langinfra.backend.superuserPassword | default (randAlphaNum 32) }}"
+            - name: LANGINFRA_SECRET_KEY
+              value: "{{ .Values.langinfra.backend.secretKey | default (randAlphaNum 32) }}"
+            - name: LANGINFRA_NEW_USER_IS_ACTIVE
+              value: "{{ .Values.langinfra.backend.newUserIsActive | default "False" }}"
+            {{- end }}
+          resources:
+            {{- toYaml .Values.langinfra.backend.resources | nindent 12 }}
+      {{- with .Values.langinfra.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.langinfra.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.langinfra.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.langinfra.backend.sqlite.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: {{ .Values.langinfra.backend.sqlite.volume.size }}
+      {{- if .Values.langinfra.backend.sqlite.volume.existingStorageClassName }}
+      {{- if ne .Values.langinfra.backend.sqlite.volume.existingStorageClassName "default"}}
+      storageClassName: {{ .Values.langinfra.backend.sqlite.volume.existingStorageClassName }}
+      {{- else }}
+      {{- end }}
+      {{- else }}
+      storageClassName: "{{ template "langinfra.fullname" . }}-sqlite"
+      {{- end }}
+      
+  {{- end }}

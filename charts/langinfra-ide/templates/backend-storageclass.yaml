@@ -1,0 +1,27 @@
+{{- if and .Values.langinfra.backend.sqlite.enabled (not .Values.langinfra.backend.sqlite.volume.existingStorageClassName) }}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: "{{ template "langinfra.fullname" . }}-sqlite"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ template "langinfra.name" . }}
+    chart: {{ template "langinfra.chart" . }}
+    release: {{ .Release.Name }}
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+{{- if .Values.langinfra.backend.sqlite.volume.storageClass }}
+provisioner: {{ .Values.langinfra.backend.sqlite.volume.storageClass.provisioner }}
+parameters:
+  {{- if .Values.langinfra.backend.sqlite.volume.storageClass.type }}
+  type: {{ .Values.langinfra.backend.sqlite.volume.storageClass.type }}
+  {{- end }}
+  {{- if .Values.langinfra.backend.sqlite.volume.storageClass.fsType }}
+  fsType: {{ .Values.langinfra.backend.sqlite.volume.storageClass.fsType }}
+  {{- end }}
+  {{- if .Values.langinfra.backend.sqlite.volume.storageClass.extraParams }}
+{{ toYaml .Values.langinfra.backend.sqlite.volume.storageClass.extraParams | indent 2 }}
+  {{- end }}
+{{- end }}
+{{- end }}
