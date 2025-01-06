@@ -1,0 +1,29 @@
+postgresql:
+  enabled: true
+  fullnameOverride: "langinfra-ide-postgresql-service"
+  auth:
+    username: "langinfra"
+    password: "langinfra-postgres"
+    database: "langinfra-db"
+
+langinfra:
+  backend:
+    externalDatabase:
+      enabled: true
+      driver:
+        value: "postgresql"
+      host:
+        value: "langinfra-ide-postgresql-service"
+      port:
+        value: "5432"
+      database:
+        value: "langinfra-db"
+      user:
+        value: "langinfra"
+      password:
+        valueFrom:
+          secretKeyRef:
+            key: "password"
+            name: "langinfra-ide-postgresql-service"
+    sqlite:
+      enabled: false

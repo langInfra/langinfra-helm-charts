@@ -1,0 +1,14 @@
+apiVersion: v2
+name: langinfra-ide
+description: Helm chart for Langinfra IDE
+type: application
+version: 0.1.0
+appVersion: latest
+maintainers:
+  - name: Langinfra
+    email: contact@langinfra.org
+dependencies:
+  - name: postgresql
+    version: 15.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled

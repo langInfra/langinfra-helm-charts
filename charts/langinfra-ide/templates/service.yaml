@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "langinfra.fullname" . }}
+  labels:
+    app: {{ template "langinfra.name" . }}
+    chart: {{ template "langinfra.chart" . }}
+    release: {{ .Release.Name }}
+spec:
+  type: {{ .Values.langinfra.frontend.service.type }}
+  ports:
+    - port: {{ .Values.langinfra.frontend.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: {{ template "langinfra.name" . }}
+    chart: {{ template "langinfra.chart" . }}
+    release: {{ .Release.Name }}
+    langinfra-scope: "frontend"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "langinfra.fullname" . }}-backend
+  labels:
+    app: {{ template "langinfra.name" . }}
+    chart: {{ template "langinfra.chart" . }}
+    release: {{ .Release.Name }}
+spec:
+  type: {{ .Values.langinfra.backend.service.type }}
+  ports:
+    - port: {{ .Values.langinfra.backend.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: {{ template "langinfra.name" . }}
+    chart: {{ template "langinfra.chart" . }}
+    release: {{ .Release.Name }}
+    langinfra-scope: "backend"
